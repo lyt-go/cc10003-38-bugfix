@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import ROUTERS
 from app.store import store
+from app.verification.bootstrap import bootstrap_demo
 
 app = FastAPI(title="指标口径与分析实验平台", version="1.0.0")
 
@@ -24,6 +25,19 @@ app.add_middleware(
 
 for module in ROUTERS:
     app.include_router(module.router)
+
+
+@app.on_event("startup")
+def _bootstrap() -> None:
+    """启动顺序：先回填存量验证记录并立水位，再引导 v3 口径与 PAY_CHECK 任务。
+
+    水位之后出现的任务不会被误回填成 LEGACY，必须经过真实执行链路。
+    """
+    from app.verification import verification_service
+
+    verification_service.ensure_backfill()
+    verification_service.mark_backfill_watermark()
+    bootstrap_demo()
 
 
 @app.get("/api/health")
